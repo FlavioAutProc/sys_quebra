@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+    <title>Registro de Quebras — Padaria</title>
+    <!-- Font Awesome 6 (gratuito) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <!-- jsPDF para geração de PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+    <!-- ===== APP SHELL ===== -->
+    <div id="app">
+
+        <!-- TOP BAR -->
+        <header id="topbar">
+            <div class="topbar-inner">
+                <h1><i class="fas fa-store-alt"></i> Quebras</h1>
+                <span class="topbar-badge" id="recordCount">0</span>
+            </div>
+        </header>
+
+        <!-- ===== PAGES ===== -->
+        <main id="pageContainer">
+
+            <!-- PAGE: REGISTRAR -->
+            <section id="page-registrar" class="page active">
+                <div class="page-header">
+                    <h2><i class="fas fa-pen-alt"></i> Registrar Quebra</h2>
+                    <p>Preencha os dados do produto e adicione uma evidência.</p>
+                </div>
+
+                <form id="formQuebra" novalidate>
+                    <div class="form-group">
+                        <label for="codigo"><i class="fas fa-hashtag"></i> Código <span class="required">*</span></label>
+                        <input type="text" id="codigo" placeholder="Ex: 00125" required autocomplete="off" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="produto"><i class="fas fa-tag"></i> Produto <span class="required">*</span></label>
+                        <input type="text" id="produto" placeholder="Ex: Pão de Forma" required autocomplete="off" />
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="peso"><i class="fas fa-weight-scale"></i> Peso (kg) <span class="required">*</span></label>
+                            <input type="text" id="peso" placeholder="0,000" required inputmode="decimal" />
+                        </div>
+                        <div class="form-group">
+                            <label for="valorKg"><i class="fas fa-dollar-sign"></i> Valor / kg <span class="required">*</span></label>
+                            <input type="text" id="valorKg" placeholder="R$ 0,00" required inputmode="decimal" />
+                        </div>
+                    </div>
+
+                    <div class="form-group total-destaque">
+                        <label><i class="fas fa-calculator"></i> Valor total</label>
+                        <div id="totalDisplay">R$ 0,00</div>
+                    </div>
+
+                    <!-- FOTO -->
+                    <div class="form-group foto-group">
+                        <label><i class="fas fa-camera"></i> Evidência / Foto da etiqueta</label>
+                        <div class="foto-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="btnCamera"><i class="fas fa-camera"></i> Câmera</button>
+                            <button type="button" class="btn btn-outline btn-sm" id="btnGaleria"><i class="fas fa-images"></i> Galeria</button>
+                            <button type="button" class="btn btn-outline btn-sm" id="btnArquivo"><i class="fas fa-folder-open"></i> Arquivo</button>
+                            <button type="button" class="btn btn-outline btn-sm btn-danger" id="btnRemoverFoto" style="display:none;"><i class="fas fa-trash-alt"></i> Remover</button>
+                        </div>
+                        <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+                        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" />
+                        <div class="foto-preview" id="fotoPreview">
+                            <span class="foto-placeholder"><i class="fas fa-image"></i> Nenhuma imagem selecionada</span>
+                            <img id="fotoImg" style="display:none;" alt="Pré-visualização" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="observacao"><i class="fas fa-comment"></i> Observação</label>
+                        <textarea id="observacao" rows="2" placeholder="Informações adicionais sobre a quebra..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="btnLimpar"><i class="fas fa-eraser"></i> Limpar</button>
+                        <button type="submit" class="btn btn-primary" id="btnSalvar"><i class="fas fa-save"></i> Salvar Registro</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- PAGE: REGISTROS -->
+            <section id="page-registros" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-list-ul"></i> Registros</h2>
+                    <p>Histórico completo de todas as quebras registradas.</p>
+                </div>
+
+                <div class="search-filter-bar">
+                    <div class="search-group">
+                        <input type="text" id="searchInput" placeholder="🔍 Código, produto ou data..." />
+                    </div>
+                    <div class="filter-group">
+                        <select id="periodoFilter">
+                            <option value="hoje">Hoje</option>
+                            <option value="ontem">Ontem</option>
+                            <option value="7dias">Últimos 7 dias</option>
+                            <option value="mes">Este mês</option>
+                            <option value="personalizado">Período personalizado</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="periodo-custom" id="periodoCustom" style="display:none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dataInicial">Data inicial</label>
+                            <input type="date" id="dataInicial" />
+                        </div>
+                        <div class="form-group">
+                            <label for="dataFinal">Data final</label>
+                            <input type="date" id="dataFinal" />
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnAplicarPeriodo"><i class="fas fa-filter"></i> Aplicar</button>
+                </div>
+
+                <div id="registrosList">
+                    <div class="empty-state">
+                        <span class="empty-icon"><i class="fas fa-inbox"></i></span>
+                        <p>Nenhum registro encontrado.</p>
+                        <p class="empty-sub">Registre sua primeira quebra na aba "Registrar".</p>
+                    </div>
+                </div>
+
+                <div id="loadMoreContainer" style="display:none; text-align:center; padding:1rem;">
+                    <button class="btn btn-outline" id="btnLoadMore"><i class="fas fa-chevron-down"></i> Carregar mais</button>
+                </div>
+            </section>
+
+            <!-- PAGE: RELATÓRIOS -->
+            <section id="page-relatorios" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-file-alt"></i> Relatórios</h2>
+                    <p>Consulte, imprima ou exporte registros para auditoria.</p>
+                </div>
+
+                <div class="relatorio-filtros">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="relDataInicial"><i class="fas fa-calendar-alt"></i> Data inicial</label>
+                            <input type="date" id="relDataInicial" />
+                        </div>
+                        <div class="form-group">
+                            <label for="relDataFinal"><i class="fas fa-calendar-alt"></i> Data final</label>
+                            <input type="date" id="relDataFinal" />
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary" id="btnGerarRelatorio"><i class="fas fa-chart-bar"></i> Gerar Relatório</button>
+                        <button type="button" class="btn btn-outline" id="btnImprimirRelatorio"><i class="fas fa-print"></i> Imprimir</button>
+                        <button type="button" class="btn btn-outline" id="btnExportarCSV"><i class="fas fa-file-csv"></i> CSV</button>
+                        <button type="button" class="btn btn-outline" id="btnExportarPDF"><i class="fas fa-file-pdf"></i> PDF</button>
+                    </div>
+                </div>
+
+                <div id="relatorioResultado" style="overflow-x:auto; max-height:600px; overflow-y:auto;">
+                    <div class="empty-state">
+                        <span class="empty-icon"><i class="fas fa-file-alt"></i></span>
+                        <p>Selecione um período e clique em "Gerar Relatório".</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: CONFIGURAÇÕES -->
+            <section id="page-configuracoes" class="page">
+                <div class="page-header">
+                    <h2><i class="fas fa-cog"></i> Configurações</h2>
+                    <p>Gerenciamento de dados e armazenamento.</p>
+                </div>
+
+                <div class="config-card">
+                    <h3><i class="fas fa-database"></i> Dados</h3>
+                    <div class="config-item">
+                        <span>Total de registros</span>
+                        <strong id="configTotalRegistros">0</strong>
+                    </div>
+                    <div class="config-item">
+                        <span>Armazenamento usado (fotos)</span>
+                        <strong id="configStorageSize">0 KB</strong>
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3><i class="fas fa-archive"></i> Backup</h3>
+                    <div class="config-actions">
+                        <button type="button" class="btn btn-primary" id="btnExportarBackup"><i class="fas fa-download"></i> Exportar Backup</button>
+                        <button type="button" class="btn btn-outline" id="btnRestaurarBackup"><i class="fas fa-upload"></i> Restaurar Backup</button>
+                        <input type="file" id="restoreInput" accept=".json" style="display:none;" />
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3><i class="fas fa-file-export"></i> Exportar Dados</h3>
+                    <div class="config-actions">
+                        <button type="button" class="btn btn-outline" id="btnExportarDados"><i class="fas fa-file-code"></i> Exportar JSON</button>
+                    </div>
+                </div>
+
+                <div class="config-card config-danger">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Manutenção</h3>
+                    <div class="config-actions">
+                        <button type="button" class="btn btn-danger" id="btnLimparDados"><i class="fas fa-trash-alt"></i> Limpar Todos os Dados</button>
+                    </div>
+                    <p class="config-warn">Esta ação é irreversível. Todos os registros e fotos serão permanentemente removidos.</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- ===== BOTTOM NAV ===== -->
+        <nav id="bottomNav">
+            <button class="nav-btn active" data-page="registrar">
+                <span class="nav-icon"><i class="fas fa-pen-alt"></i></span>
+                <span class="nav-label">Registrar</span>
+            </button>
+            <button class="nav-btn" data-page="registros">
+                <span class="nav-icon"><i class="fas fa-list-ul"></i></span>
+                <span class="nav-label">Registros</span>
+            </button>
+            <button class="nav-btn" data-page="relatorios">
+                <span class="nav-icon"><i class="fas fa-file-alt"></i></span>
+                <span class="nav-label">Relatórios</span>
+            </button>
+            <button class="nav-btn" data-page="configuracoes">
+                <span class="nav-icon"><i class="fas fa-cog"></i></span>
+                <span class="nav-label">Config.</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ===== MODAIS (mesmo HTML anterior, mas com ícones) ===== -->
+    <!-- ... (mantive o mesmo conteúdo dos modais, apenas substituí textos por ícones nos botões) ... -->
+
+    <!-- Para resumir, vou manter os modais idênticos aos anteriores, apenas com pequenos ajustes de ícones -->
+    <!-- Incluir todos os modais do código anterior -->
+
+    <!-- MODAL: CONFIRMAÇÃO -->
+    <div class="modal-overlay" id="modalConfirmacao">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-check-circle" style="color:var(--success);"></i> Conferir Registro</h3>
+                <button class="modal-close" data-close="modalConfirmacao">&times;</button>
+            </div>
+            <div class="modal-body" id="confirmacaoBody">
+                <div class="confirm-item"><strong><i class="fas fa-hashtag"></i> Código:</strong> <span id="confCodigo"></span></div>
+                <div class="confirm-item"><strong><i class="fas fa-tag"></i> Produto:</strong> <span id="confProduto"></span></div>
+                <div class="confirm-item"><strong><i class="fas fa-weight-scale"></i> Peso:</strong> <span id="confPeso"></span></div>
+                <div class="confirm-item"><strong><i class="fas fa-dollar-sign"></i> Valor/kg:</strong> <span id="confValorKg"></span></div>
+                <div class="confirm-item confirm-total"><strong><i class="fas fa-calculator"></i> Valor total:</strong> <span id="confTotal"></span></div>
+                <div class="confirm-item"><strong><i class="fas fa-camera"></i> Foto:</strong> <span id="confFoto">✗ Não anexada</span></div>
+                <div class="confirm-item"><strong><i class="fas fa-comment"></i> Observação:</strong> <span id="confObservacao">—</span></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalConfirmacao"><i class="fas fa-arrow-left"></i> Voltar</button>
+                <button class="btn btn-primary" id="btnConfirmarSalvar"><i class="fas fa-check"></i> Confirmar Registro</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: SUCESSO -->
+    <div class="modal-overlay" id="modalSucesso">
+        <div class="modal modal-success">
+            <div class="modal-body" style="text-align:center; padding:2rem;">
+                <div style="font-size:4rem; color:var(--success);"><i class="fas fa-check-circle"></i></div>
+                <h3 style="color:var(--success);">Registro realizado com sucesso!</h3>
+                <p id="sucessoId" style="color:var(--text-secondary); margin-top:0.5rem;">ID: #000000</p>
+                <button class="btn btn-primary" data-close="modalSucesso" style="margin-top:1.5rem;"><i class="fas fa-thumbs-up"></i> OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: DETALHE -->
+    <div class="modal-overlay" id="modalDetalhe">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-invoice"></i> Registro de Quebra</h3>
+                <button class="modal-close" data-close="modalDetalhe">&times;</button>
+            </div>
+            <div class="modal-body" id="detalheBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalDetalhe"><i class="fas fa-times"></i> Fechar</button>
+                <button class="btn btn-outline" id="btnEditarRegistro"><i class="fas fa-edit"></i> Editar</button>
+                <button class="btn btn-danger" id="btnExcluirRegistro"><i class="fas fa-trash-alt"></i> Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: EDIÇÃO (similar) -->
+    <div class="modal-overlay" id="modalEdicao">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Editar Registro</h3>
+                <button class="modal-close" data-close="modalEdicao">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="formEdicao" novalidate>
+                    <input type="hidden" id="editId" />
+                    <div class="form-group">
+                        <label for="editCodigo"><i class="fas fa-hashtag"></i> Código <span class="required">*</span></label>
+                        <input type="text" id="editCodigo" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="editProduto"><i class="fas fa-tag"></i> Produto <span class="required">*</span></label>
+                        <input type="text" id="editProduto" required />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editPeso"><i class="fas fa-weight-scale"></i> Peso (kg) <span class="required">*</span></label>
+                            <input type="text" id="editPeso" required inputmode="decimal" />
+                        </div>
+                        <div class="form-group">
+                            <label for="editValorKg"><i class="fas fa-dollar-sign"></i> Valor / kg <span class="required">*</span></label>
+                            <input type="text" id="editValorKg" required inputmode="decimal" />
+                        </div>
+                    </div>
+                    <div class="form-group total-destaque">
+                        <label><i class="fas fa-calculator"></i> Valor total</label>
+                        <div id="editTotalDisplay">R$ 0,00</div>
+                    </div>
+                    <div class="form-group foto-group">
+                        <label><i class="fas fa-camera"></i> Evidência / Foto</label>
+                        <div class="foto-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="editBtnArquivo"><i class="fas fa-sync-alt"></i> Substituir</button>
+                            <button type="button" class="btn btn-outline btn-sm btn-danger" id="editBtnRemoverFoto"><i class="fas fa-trash-alt"></i> Remover</button>
+                        </div>
+                        <input type="file" id="editFileInput" accept="image/*" style="display:none;" />
+                        <div class="foto-preview" id="editFotoPreview">
+                            <span class="foto-placeholder" id="editFotoPlaceholder"><i class="fas fa-image"></i> Nenhuma imagem</span>
+                            <img id="editFotoImg" style="display:none;" alt="Pré-visualização" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="editObservacao"><i class="fas fa-comment"></i> Observação</label>
+                        <textarea id="editObservacao" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalEdicao"><i class="fas fa-times"></i> Cancelar</button>
+                <button class="btn btn-primary" id="btnSalvarEdicao"><i class="fas fa-save"></i> Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: EXCLUIR -->
+    <div class="modal-overlay" id="modalExcluir">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle" style="color:var(--danger);"></i> Excluir este registro?</h3>
+                <button class="modal-close" data-close="modalExcluir">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Esta ação removerá permanentemente o registro e seus anexos.</p>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:0.5rem;">ID: <span id="excluirId"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalExcluir"><i class="fas fa-times"></i> Cancelar</button>
+                <button class="btn btn-danger" id="btnConfirmarExcluir"><i class="fas fa-trash-alt"></i> Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: LIMPAR DADOS -->
+    <div class="modal-overlay" id="modalLimparDados">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle" style="color:var(--danger);"></i> Limpar todos os dados?</h3>
+                <button class="modal-close" data-close="modalLimparDados">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Esta ação é irreversível.</strong></p>
+                <p>Todos os registros e fotos serão permanentemente removidos.</p>
+                <p style="color:var(--danger); font-weight:600;">Tem certeza que deseja continuar?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalLimparDados"><i class="fas fa-times"></i> Cancelar</button>
+                <button class="btn btn-danger" id="btnConfirmarLimpar"><i class="fas fa-trash-alt"></i> Sim, limpar tudo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: RESTAURAR BACKUP -->
+    <div class="modal-overlay" id="modalRestaurar">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-upload"></i> Restaurar Backup</h3>
+                <button class="modal-close" data-close="modalRestaurar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Selecione um arquivo de backup (.json) para restaurar.</p>
+                <p style="color:var(--text-secondary); font-size:0.9rem;">Os dados existentes serão <strong>substituídos</strong> pelos dados do backup.</p>
+                <input type="file" id="restoreFileInput" accept=".json" style="display:block; margin-top:1rem; width:100%;" />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modalRestaurar"><i class="fas fa-times"></i> Cancelar</button>
+                <button class="btn btn-primary" id="btnConfirmarRestaurar"><i class="fas fa-upload"></i> Restaurar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SCRIPTS ===== -->
+    <script src="script.js"></script>
+</body>
+</html>
