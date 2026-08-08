@@ -302,30 +302,30 @@
             let fotoHtml = '';
             if (temFoto) {
                 fotoHtml = `
-                    <div style="margin-top:12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); overflow:hidden; max-width:100%;">
-                        <img src="${registro.foto}" style="max-width:100%; max-height:400px; display:block; cursor:pointer;" alt="Evidência" onclick="window.open('${registro.foto}','_blank')" />
+                    <div class="detail-photo">
+                        <img src="${registro.foto}" alt="Evidência" onclick="window.open('${registro.foto}','_blank')" />
                     </div>
                 `;
             } else {
-                fotoHtml = `<p style="color:var(--text-muted);"><i class="fas fa-image"></i> Nenhuma foto anexada.</p>`;
+                fotoHtml = `<p class="detail-empty"><i class="fas fa-image"></i> Nenhuma foto anexada.</p>`;
             }
             body.innerHTML = `
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:12px;">
-                    <div><strong><i class="fas fa-hashtag"></i> ID:</strong> ${gerarIdDisplay(registro.id)}</div>
-                    <div><strong><i class="fas fa-calendar"></i> Data:</strong> ${formatDate(data)}</div>
-                    <div><strong><i class="fas fa-clock"></i> Hora:</strong> ${formatTime(data)}</div>
-                    <div><strong><i class="fas fa-hashtag"></i> Código:</strong> ${registro.codigo}</div>
-                    <div><strong><i class="fas fa-tag"></i> Produto:</strong> ${registro.produto}</div>
-                    <div><strong><i class="fas fa-weight-scale"></i> Peso:</strong> ${formatPeso(registro.pesoKg)}</div>
-                    <div><strong><i class="fas fa-dollar-sign"></i> Valor/kg:</strong> ${formatMoeda(registro.valorKg)}</div>
-                    <div><strong><i class="fas fa-calculator"></i> Valor total:</strong> ${formatMoeda(registro.valorTotal)}</div>
+                <div class="detail-grid">
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-hashtag"></i> ID</span><span class="detail-value mono">${gerarIdDisplay(registro.id)}</span></div>
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-calendar"></i> Data</span><span class="detail-value">${formatDate(data)}</span></div>
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-clock"></i> Hora</span><span class="detail-value">${formatTime(data)}</span></div>
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-hashtag"></i> Código</span><span class="detail-value mono">${registro.codigo}</span></div>
+                    <div class="detail-item detail-span2"><span class="detail-label"><i class="fas fa-tag"></i> Produto</span><span class="detail-value">${registro.produto}</span></div>
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-weight-scale"></i> Peso</span><span class="detail-value">${formatPeso(registro.pesoKg)}</span></div>
+                    <div class="detail-item"><span class="detail-label"><i class="fas fa-dollar-sign"></i> Valor/kg</span><span class="detail-value">${formatMoeda(registro.valorKg)}</span></div>
+                    <div class="detail-item detail-span2 detail-highlight"><span class="detail-label"><i class="fas fa-calculator"></i> Valor total</span><span class="detail-value">${formatMoeda(registro.valorTotal)}</span></div>
                 </div>
-                <div style="border-top:1px solid var(--border-color); padding-top:12px; margin-top:6px;">
-                    <strong><i class="fas fa-comment"></i> Observação:</strong>
-                    <p style="margin-top:4px; color:var(--text-secondary);">${registro.observacao || '—'}</p>
+                <div class="detail-section">
+                    <span class="detail-section-title"><i class="fas fa-comment"></i> Observação</span>
+                    <p class="detail-text">${registro.observacao || '—'}</p>
                 </div>
-                <div style="border-top:1px solid var(--border-color); padding-top:12px; margin-top:6px;">
-                    <strong><i class="fas fa-camera"></i> Evidência</strong>
+                <div class="detail-section">
+                    <span class="detail-section-title"><i class="fas fa-camera"></i> Evidência</span>
                     ${fotoHtml}
                 </div>
             `;
@@ -561,11 +561,14 @@
         const printContent = document.getElementById('relatorioPrint');
         const periodo = document.getElementById('relDataInicial').value + ' a ' + document.getElementById('relDataFinal').value;
         printContent.innerHTML = `
-            <div style="max-width:900px; margin:0 auto; padding:20px; font-family:system-ui, sans-serif;">
-                <h1 style="font-size:1.6rem; margin-bottom:4px;">REGISTRO DE QUEBRAS — PADARIA</h1>
-                <p style="color:#475569; margin-bottom:20px;">Período: ${periodo}</p>
+            <div style="max-width:900px; margin:0 auto; padding:20px; font-family:'Inter', system-ui, sans-serif;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #101828; padding-bottom:10px; margin-bottom:4px;">
+                    <h1 style="font-size:1.3rem; font-weight:800; letter-spacing:-0.3px;">REGISTRO DE QUEBRAS — PADARIA</h1>
+                    <span style="font-size:0.78rem; color:#667085;">Relatório de auditoria</span>
+                </div>
+                <p style="color:#475569; margin-bottom:18px; font-size:0.88rem;">Período: ${periodo}</p>
                 ${tabela.outerHTML}
-                <p style="margin-top:20px; color:#64748b; font-size:0.85rem;">Gerado em ${formatDateTime(new Date())}</p>
+                <p style="margin-top:18px; color:#667085; font-size:0.78rem;">Gerado em ${formatDateTime(new Date())}</p>
             </div>
         `;
         const printWindow = window.open('', '_blank', 'width=900,height=700');
