@@ -269,6 +269,24 @@
         });
     }
 
+    // Agrupa uma lista de registros por dia de calendário (dataHora local).
+    // Retorna um array ordenado: [{ chaveDia: 'YYYY-MM-DD', periodoLabel: 'dd/mm/aaaa', registros: [...] }]
+    // Cada dia vira, futuramente, UM relatório individual — nunca um intervalo inteiro misturado.
+    function agruparRegistrosPorDia(registros) {
+        const mapa = {};
+        registros.forEach(r => {
+            const d = new Date(r.dataHora);
+            const chave = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            if (!mapa[chave]) mapa[chave] = [];
+            mapa[chave].push(r);
+        });
+        return Object.keys(mapa).sort().map(chave => ({
+            chaveDia: chave,
+            periodoLabel: formatDate(new Date(chave + 'T00:00:00')),
+            registros: mapa[chave]
+        }));
+    }
+
     // ===== RESUMO / TOTALIZAÇÃO =====
     function calcularResumoRelatorio(registros) {
         const mapa = {};
@@ -569,30 +587,25 @@
     }
 
     // ===== EXPORTAR PDF (com agrupamento por produto) =====
-    function exportarPDF(registros, periodoLabel) {
-        if (!registros || registros.length === 0) {
-            alert('Nenhum registro para gerar PDF.');
-            return;
-        }
-
-        const resumo = calcularResumoRelatorio(registros);
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('landscape', 'mm', 'a4');
+    // Desenha o cabeçalho (título + período) de um bloco de relatório no PDF, a partir de y=14.
+    function desenharCabecalhoPDF(doc, periodoLabel) {
         const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 14;
-        let y = margin;
-
-        // Título
-        doc.setFontSize(16);
+        let y = 14;
+        doc.setFontSize(15);
         doc.setTextColor(26, 73, 114);
         doc.text('REGISTRO DE QUEBRAS — PADARIA', pageWidth / 2, y, { align: 'center' });
-        y += 8;
-        doc.setFontSize(11);
+        y += 7;
+        doc.setFontSize(10.5);
         doc.setTextColor(60, 70, 80);
-        doc.text(`Período: ${periodoLabel}`, pageWidth / 2, y, { align: 'center' });
-        y += 10;
+        doc.text(`Relatório — ${periodoLabel}`, pageWidth / 2, y, { align: 'center' });
+        y += 9;
+        return y;
+    }
 
-        // Caixas de resumo
+    // Desenha as caixas de totais (registros / kg / R$) e retorna o novo y.
+    function desenharCaixasResumoPDF(doc, y, resumo) {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 14;
         const boxGap = 5;
         const boxWidth = (pageWidth - 2 * margin - boxGap * 2) / 3;
         const boxes = [
@@ -612,149 +625,232 @@
             doc.setTextColor(15, 52, 82);
             doc.text(b.value, bx + 4, y + 13);
         });
-        y += 24;
+        return y + 24;
+    }
 
-        // Para cada produto, uma seção com subtítulo e tabela de registros
-        resumo.porProduto.forEach((p, idx) => {
-            // Verificar se cabe na página, senão quebrar
-            if (y > 180) {
-                doc.addPage();
-                y = margin + 10;
-            }
+    // Desenha a tabela de registros de UM produto (com quebra de página) e retorna o novo y.
+    function desenharTabelaDetalheRegistrosPDF(doc, y, registros) {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 14;
+        const headers = ['ID', 'Data', 'Hora', 'Código', 'Produto', 'Peso', 'Valor/kg', 'Total', 'Obs.'];
+        const colWidths = [18, 20, 14, 22, 50, 22, 24, 24, 75];
 
-            doc.setFontSize(11);
-            doc.setTextColor(26, 73, 114);
-            doc.text(`Produto: ${p.codigo} - ${p.produto}`, margin, y);
-            y += 5;
-            doc.setFontSize(9);
-            doc.setTextColor(60);
-            doc.text(`Registros: ${p.qtd}  |  Total Kg: ${formatPeso(p.totalKg)}  |  Total R$: ${formatMoeda(p.totalValor)}`, margin, y);
-            y += 6;
-
-            // Cabeçalho da tabela de registros do produto
-            const headers = ['ID', 'Data', 'Hora', 'Peso', 'Valor/kg', 'Total', 'Obs.'];
-            const colWidths = [16, 22, 16, 22, 22, 22, 30];
+        function desenharCabecalhoTabela(yy) {
+            doc.setFillColor(240, 244, 248);
+            doc.rect(margin, yy - 4, pageWidth - 2 * margin, 7, 'F');
             let x = margin;
             doc.setFontSize(8);
             doc.setTextColor(40);
-            doc.setFillColor(240, 244, 248);
-            doc.rect(margin, y - 4, pageWidth - 2 * margin, 7, 'F');
             headers.forEach((h, i) => {
-                doc.text(h, x + 1, y + 1);
+                doc.text(h, x + 1, yy + 1);
                 x += colWidths[i];
             });
-            y += 7;
+            return yy + 7;
+        }
 
-            // Linhas
-            doc.setTextColor(0);
-            p.registros.forEach(r => {
-                const d = new Date(r.dataHora);
-                const row = [
-                    String(r.id),
-                    formatDate(d),
-                    formatTime(d),
-                    formatPeso(r.pesoKg),
-                    formatMoeda(r.valorKg),
-                    formatMoeda(r.valorTotal),
-                    (r.observacao || '').slice(0, 12)
-                ];
-                x = margin;
-                row.forEach((cell, i) => {
-                    doc.text(String(cell), x + 1, y + 1);
-                    x += colWidths[i];
-                });
-                y += 6;
-                if (y > 190) {
-                    // quebra de página dentro do produto
-                    doc.addPage();
-                    y = margin + 10;
-                    // reimprimir cabeçalho da tabela
-                    doc.setFillColor(240, 244, 248);
-                    doc.rect(margin, y - 4, pageWidth - 2 * margin, 7, 'F');
-                    x = margin;
-                    headers.forEach((h, i) => {
-                        doc.text(h, x + 1, y + 1);
-                        x += colWidths[i];
-                    });
-                    y += 7;
-                }
-            });
-
-            // Linha de subtotal do produto
+        if (y > 180) {
+            doc.addPage();
+            y = 14;
+        }
+        y = desenharCabecalhoTabela(y);
+        doc.setTextColor(0);
+        registros.forEach(r => {
+            if (y > 190) {
+                doc.addPage();
+                y = 14;
+                y = desenharCabecalhoTabela(y);
+            }
+            const d = new Date(r.dataHora);
+            const row = [
+                gerarIdDisplay(r.id),
+                formatDate(d),
+                formatTime(d),
+                r.codigo,
+                r.produto,
+                formatPeso(r.pesoKg),
+                formatMoeda(r.valorKg),
+                formatMoeda(r.valorTotal),
+                (r.observacao || '').slice(0, 30)
+            ];
+            let x = margin;
             doc.setFontSize(8);
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(26, 73, 114);
-            x = margin;
-            doc.text('SUBTOTAL', x + 1, y + 1);
-            x += colWidths[0] + colWidths[1] + colWidths[2];
-            doc.text(formatPeso(p.totalKg), x + 1, y + 1);
-            x += colWidths[3] + colWidths[4];
-            doc.text(formatMoeda(p.totalValor), x + 1, y + 1);
-            doc.setFont(undefined, 'normal');
-            y += 8;
+            row.forEach((cell, i) => {
+                doc.text(String(cell), x + 1, y + 1);
+                x += colWidths[i];
+            });
+            y += 6;
+        });
+        return y;
+    }
 
-            // Linha separadora entre produtos
-            doc.setDrawColor(200);
+    // Desenha um bloco completo de UM período: cabeçalho + totais + cada produto (com seu
+    // subtotal e seus registros) + total geral do período, na página atual do doc.
+    function desenharBlocoRelatorioPDF(doc, periodoLabel, resumo) {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 14;
+        let y = desenharCabecalhoPDF(doc, periodoLabel);
+        y = desenharCaixasResumoPDF(doc, y, resumo);
+
+        (resumo.porProduto || []).forEach(p => {
+            if (y > 172) {
+                doc.addPage();
+                y = 14;
+            }
+            doc.setFontSize(11);
+            doc.setTextColor(26, 73, 114);
+            doc.text(`${p.codigo} — ${p.produto}`, margin, y);
+            y += 5;
+            doc.setFontSize(8.5);
+            doc.setTextColor(70);
+            doc.text(`${p.qtd} registro(s)  |  Total Kg: ${formatPeso(p.totalKg)}  |  Total R$: ${formatMoeda(p.totalValor)}`, margin, y);
+            y += 6;
+
+            y = desenharTabelaDetalheRegistrosPDF(doc, y, p.registros);
+
+            y += 4;
+            doc.setDrawColor(210);
             doc.line(margin, y - 2, pageWidth - margin, y - 2);
             y += 4;
         });
 
-        // Rodapé geral
+        if (y > 182) {
+            doc.addPage();
+            y = 14;
+        }
+        doc.setDrawColor(26, 73, 114);
+        doc.setLineWidth(0.6);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 6;
+        doc.setFontSize(10.5);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(15, 52, 82);
+        doc.text('TOTAL GERAL DO PERÍODO', margin, y);
+        doc.text(
+            `${resumo.totalRegistros} registros   |   ${formatPeso(resumo.totalPesoKg)}   |   ${formatMoeda(resumo.totalValor)}`,
+            pageWidth - margin, y, { align: 'right' }
+        );
+        doc.setFont(undefined, 'normal');
+        y += 8;
+
         doc.setFontSize(9);
         doc.setTextColor(100);
-        doc.text(`Total geral: ${registros.length} registros`, margin, y + 6);
-        doc.text(`Gerado em ${formatDateTime(new Date())}`, pageWidth - margin, y + 6, { align: 'right' });
-
-        doc.save(`relatorio_quebras_${new Date().toISOString().slice(0,10)}.pdf`);
+        doc.text(`Gerado em ${formatDateTime(new Date())}`, pageWidth - margin, y, { align: 'right' });
     }
 
-    // ===== RENDERIZAR RESUMO (stats + total por produto) =====
-    function renderResumoHtml(totalRegistros, totalPesoKg, totalValor, porProduto) {
-        let linhas = '';
-        porProduto.forEach(p => {
-            const pct = totalValor > 0 ? ((p.totalValor / totalValor) * 100).toFixed(1) : '0.0';
-            linhas += `<tr>
-                <td>${p.codigo}</td>
-                <td>${p.produto}</td>
-                <td class="num">${p.qtd}</td>
-                <td class="num">${formatPeso(p.totalKg)}</td>
-                <td class="num">${formatMoeda(p.totalValor)}</td>
-                <td class="num">${pct}%</td>
+    // PDF individual de um relatório já salvo no histórico (somente aquele período/dia).
+    function exportarPDFRelatorioSalvo(rel) {
+        if (!rel.totalRegistros) {
+            alert('Nenhum registro neste relatório.');
+            return;
+        }
+        const resumo = { totalRegistros: rel.totalRegistros, totalPesoKg: rel.totalPesoKg, totalValor: rel.totalValor, porProduto: rel.porProduto || [] };
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape', 'mm', 'a4');
+        desenharBlocoRelatorioPDF(doc, rel.periodoLabel, resumo);
+        doc.save(`relatorio_quebras_${rel.periodoInicio}.pdf`);
+    }
+
+    // PDF consolidado com TODOS os períodos (dias) salvos no histórico, cada um em seu próprio
+    // bloco, com os produtos daquele dia isolados — nenhum período se mistura com outro.
+    async function exportarPDFCompleto() {
+        try {
+            const lista = await obterRelatoriosSalvos();
+            if (lista.length === 0) {
+                alert('Nenhum relatório salvo para incluir no PDF completo.');
+                return;
+            }
+            const ordenada = lista.slice().sort((a, b) => new Date(a.periodoInicio) - new Date(b.periodoInicio));
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape', 'mm', 'a4');
+            ordenada.forEach((rel, idx) => {
+                if (idx > 0) doc.addPage();
+                const resumo = { totalRegistros: rel.totalRegistros, totalPesoKg: rel.totalPesoKg, totalValor: rel.totalValor, porProduto: rel.porProduto || [] };
+                desenharBlocoRelatorioPDF(doc, rel.periodoLabel, resumo);
+            });
+            doc.save(`relatorio_quebras_completo_${new Date().toISOString().slice(0,10)}.pdf`);
+        } catch (e) {
+            alert('Erro ao gerar PDF completo.');
+            console.error(e);
+        }
+    }
+
+    // ===== RENDERIZAR TABELA DE REGISTROS DETALHADOS =====
+    function renderDetalheTabelaHtml(registros) {
+        let html = `<table class="relatorio-tabela"><thead><tr>
+            <th>ID</th><th>Data</th><th>Hora</th><th>Código</th><th>Produto</th>
+            <th class="num">Peso</th><th class="num">Valor/kg</th><th class="num">Total</th><th>Obs.</th>
+        </tr></thead><tbody>`;
+        registros.forEach(r => {
+            const d = new Date(r.dataHora);
+            html += `<tr>
+                <td>${gerarIdDisplay(r.id)}</td>
+                <td>${formatDate(d)}</td>
+                <td>${formatTime(d)}</td>
+                <td>${r.codigo}</td>
+                <td>${r.produto}</td>
+                <td class="num">${formatPeso(r.pesoKg)}</td>
+                <td class="num">${formatMoeda(r.valorKg)}</td>
+                <td class="num"><strong>${formatMoeda(r.valorTotal)}</strong></td>
+                <td>${(r.observacao || '').slice(0, 20)}</td>
             </tr>`;
         });
+        html += `</tbody></table>`;
+        return html;
+    }
+
+    // ===== RENDERIZAR OS BLOCOS POR PRODUTO (cada produto com seu total + seus registros) =====
+    function renderProdutosBlocoHtml(porProduto) {
+        let html = '<div class="rel-produtos-wrap">';
+        (porProduto || []).forEach(p => {
+            html += `
+                <div class="rel-produto-bloco">
+                    <div class="rel-produto-header">
+                        <span class="rel-produto-nome"><i class="fas fa-box"></i> ${p.codigo} — ${p.produto}</span>
+                        <span class="rel-produto-totais">
+                            <span>${p.qtd} registro${p.qtd === 1 ? '' : 's'}</span>
+                            <span>${formatPeso(p.totalKg)}</span>
+                            <strong>${formatMoeda(p.totalValor)}</strong>
+                        </span>
+                    </div>
+                    ${renderDetalheTabelaHtml(p.registros)}
+                </div>
+            `;
+        });
+        html += '</div>';
+        return html;
+    }
+
+    // ===== RENDERIZAR O BLOCO COMPLETO DE UM PERÍODO (1 dia) =====
+    // Estrutura: cabeçalho do período -> caixas de totais -> produtos (com seus registros) -> total geral do período
+    function renderRelatorioDiaHtml(periodoLabel, resumo) {
         return `
-            <div class="rel-stats">
-                <div class="rel-stat">
-                    <span class="rel-stat-label"><i class="fas fa-list-ol"></i> Registros</span>
-                    <span class="rel-stat-value">${totalRegistros}</span>
+            <div class="rel-periodo-bloco">
+                <div class="rel-periodo-header">
+                    <span class="rel-periodo-titulo"><i class="fas fa-calendar-day"></i> Relatório — ${periodoLabel}</span>
                 </div>
-                <div class="rel-stat">
-                    <span class="rel-stat-label"><i class="fas fa-weight-scale"></i> Total em Kg</span>
-                    <span class="rel-stat-value">${formatPeso(totalPesoKg)}</span>
+                <div class="rel-stats">
+                    <div class="rel-stat">
+                        <span class="rel-stat-label"><i class="fas fa-list-ol"></i> Registros</span>
+                        <span class="rel-stat-value">${resumo.totalRegistros}</span>
+                    </div>
+                    <div class="rel-stat">
+                        <span class="rel-stat-label"><i class="fas fa-weight-scale"></i> Total em Kg</span>
+                        <span class="rel-stat-value">${formatPeso(resumo.totalPesoKg)}</span>
+                    </div>
+                    <div class="rel-stat rel-stat-primary">
+                        <span class="rel-stat-label"><i class="fas fa-sack-dollar"></i> Total em R$</span>
+                        <span class="rel-stat-value">${formatMoeda(resumo.totalValor)}</span>
+                    </div>
                 </div>
-                <div class="rel-stat rel-stat-primary">
-                    <span class="rel-stat-label"><i class="fas fa-sack-dollar"></i> Total em R$</span>
-                    <span class="rel-stat-value">${formatMoeda(totalValor)}</span>
+                ${renderProdutosBlocoHtml(resumo.porProduto)}
+                <div class="rel-total-geral">
+                    <span class="rel-total-geral-label"><i class="fas fa-calculator"></i> Total geral do período</span>
+                    <span class="rel-total-geral-valores">
+                        <span>${resumo.totalRegistros} reg.</span>
+                        <span>${formatPeso(resumo.totalPesoKg)}</span>
+                        <span>${formatMoeda(resumo.totalValor)}</span>
+                    </span>
                 </div>
-            </div>
-            <div class="rel-section">
-                <div class="rel-section-header-row">
-                    <span class="rel-section-title"><i class="fas fa-layer-group"></i> Total por Produto</span>
-                </div>
-                <table class="relatorio-tabela rel-breakdown-tabela">
-                    <thead><tr>
-                        <th>Código</th><th>Produto</th><th class="num">Registros</th>
-                        <th class="num">Total Kg</th><th class="num">Total R$</th><th class="num">% valor</th>
-                    </tr></thead>
-                    <tbody>${linhas}</tbody>
-                    <tfoot><tr>
-                        <td colspan="2">TOTAL GERAL</td>
-                        <td class="num">${totalRegistros}</td>
-                        <td class="num">${formatPeso(totalPesoKg)}</td>
-                        <td class="num">${formatMoeda(totalValor)}</td>
-                        <td class="num">100%</td>
-                    </tr></tfoot>
-                </table>
             </div>
         `;
     }
@@ -788,6 +884,7 @@
                         </span>
                         <span class="hi-actions">
                             <button type="button" class="btn btn-sm btn-outline hi-ver" data-id="${rel.id}" title="Visualizar"><i class="fas fa-eye"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline hi-pdf" data-id="${rel.id}" title="Gerar PDF deste período"><i class="fas fa-file-pdf"></i></button>
                             <button type="button" class="btn btn-sm btn-danger hi-excluir" data-id="${rel.id}" title="Excluir"><i class="fas fa-trash"></i></button>
                         </span>
                     </div>
@@ -801,6 +898,15 @@
                     const lista2 = await obterRelatoriosSalvos();
                     const rel = lista2.find(r => r.id === id);
                     if (rel) exibirResumoSalvo(rel);
+                });
+            });
+            container.querySelectorAll('.hi-pdf').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = parseInt(btn.dataset.id);
+                    const lista2 = await obterRelatoriosSalvos();
+                    const rel = lista2.find(r => r.id === id);
+                    if (rel) exportarPDFRelatorioSalvo(rel);
                 });
             });
             container.querySelectorAll('.hi-excluir').forEach(btn => {
@@ -819,19 +925,22 @@
 
     function exibirResumoSalvo(rel) {
         const container = document.getElementById('relatorioResultado');
+        const resumo = { totalRegistros: rel.totalRegistros, totalPesoKg: rel.totalPesoKg, totalValor: rel.totalValor, porProduto: rel.porProduto || [] };
         container.innerHTML = `
             <p class="rel-snapshot-note"><i class="fas fa-clock-rotate-left"></i> Visualizando relatório salvo de <strong>${rel.periodoLabel}</strong> (período individual, sem acúmulo com outros períodos).</p>
-            ${renderResumoHtml(rel.totalRegistros, rel.totalPesoKg, rel.totalValor, rel.porProduto)}
+            ${renderRelatorioDiaHtml(rel.periodoLabel, resumo)}
         `;
-        window._relatorioData = null;
-        window._relatorioPeriodo = rel.periodoLabel;
-        window._relatorioResumo = rel;
+        window._relatorioDiasGerados = [{ periodoLabel: rel.periodoLabel, resumo }];
         document.getElementById('relDataInicial').value = rel.periodoInicio;
         document.getElementById('relDataFinal').value = rel.periodoFim;
         container.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    // ===== GERAR RELATÓRIO (visualização) =====
+    // ===== GERAR RELATÓRIO(S) =====
+    // REGRA FUNDAMENTAL: RELATÓRIO = UM ÚNICO PERÍODO (1 dia).
+    // O intervalo selecionado em Data Inicial/Data Final apenas determina QUAIS dias serão
+    // processados — cada dia com registros gera seu próprio relatório individual, salvo
+    // separadamente no histórico. Nunca cria um relatório único somando o intervalo inteiro.
     async function gerarRelatorio() {
         const dataIni = document.getElementById('relDataInicial').value;
         const dataFim = document.getElementById('relDataFinal').value;
@@ -839,68 +948,47 @@
             alert('Selecione o período inicial e final.');
             return;
         }
+        if (dataIni > dataFim) {
+            alert('A data inicial não pode ser depois da data final.');
+            return;
+        }
         try {
             const todos = await obterTodosRegistros();
             const inicio = new Date(dataIni + 'T00:00:00');
             const fim = new Date(dataFim + 'T23:59:59');
-            const filtrados = todos.filter(r => {
+            const noIntervalo = todos.filter(r => {
                 const d = new Date(r.dataHora);
                 return d >= inicio && d <= fim;
             });
+
             const container = document.getElementById('relatorioResultado');
-            if (filtrados.length === 0) {
+            if (noIntervalo.length === 0) {
                 container.innerHTML = `<div class="empty-state"><span class="empty-icon"><i class="fas fa-inbox"></i></span><p>Nenhum registro no período selecionado.</p></div>`;
-                window._relatorioData = null;
-                window._relatorioResumo = null;
+                window._relatorioDiasGerados = null;
                 return;
             }
 
-            const resumo = calcularResumoRelatorio(filtrados);
-            const periodoLabel = `${formatDate(inicio)} a ${formatDate(fim)}`;
-
-            let detalheHtml = `<table class="relatorio-tabela"><thead><tr>
-                <th>ID</th><th>Data</th><th>Hora</th><th>Código</th><th>Produto</th>
-                <th class="num">Peso</th><th class="num">Valor/kg</th><th class="num">Total</th><th>Obs.</th>
-            </tr></thead><tbody>`;
-            filtrados.forEach(r => {
-                const d = new Date(r.dataHora);
-                detalheHtml += `<tr>
-                    <td>${gerarIdDisplay(r.id)}</td>
-                    <td>${formatDate(d)}</td>
-                    <td>${formatTime(d)}</td>
-                    <td>${r.codigo}</td>
-                    <td>${r.produto}</td>
-                    <td class="num">${formatPeso(r.pesoKg)}</td>
-                    <td class="num">${formatMoeda(r.valorKg)}</td>
-                    <td class="num"><strong>${formatMoeda(r.valorTotal)}</strong></td>
-                    <td>${(r.observacao || '').slice(0, 20)}</td>
-                </tr>`;
-            });
-            detalheHtml += `</tbody></table>`;
-
-            container.innerHTML = `
-                ${renderResumoHtml(resumo.totalRegistros, resumo.totalPesoKg, resumo.totalValor, resumo.porProduto)}
-                <div class="rel-section">
-                    <div class="rel-section-header-row">
-                        <span class="rel-section-title"><i class="fas fa-list"></i> Registros Detalhados</span>
-                        <button type="button" class="btn btn-sm btn-outline no-print" id="btnToggleDetalhe"><i class="fas fa-chevron-down"></i> Mostrar/ocultar</button>
-                    </div>
-                    <div class="rel-detail-wrap hidden" id="relDetalheWrap">${detalheHtml}</div>
-                </div>
-                <p class="rel-footer-note"><i class="fas fa-check-circle"></i> Relatório salvo no histórico — este período é individual e não acumula com outros.</p>
-            `;
-            const btnToggle = document.getElementById('btnToggleDetalhe');
-            if (btnToggle) {
-                btnToggle.addEventListener('click', () => {
-                    document.getElementById('relDetalheWrap').classList.toggle('hidden');
-                });
+            // Cada dia do intervalo vira um relatório independente — os registros de um dia
+            // nunca entram no relatório de outro dia.
+            const porDia = agruparRegistrosPorDia(noIntervalo);
+            let blocosHtml = '';
+            const diasGerados = [];
+            for (const dia of porDia) {
+                const resumo = calcularResumoRelatorio(dia.registros);
+                // Upsert: gerar novamente um dia já existente ATUALIZA o relatório daquele dia,
+                // nunca cria duplicata nem mistura com outros dias (chave = o próprio dia).
+                await salvarRelatorio(resumo, dia.chaveDia, dia.chaveDia, dia.periodoLabel);
+                blocosHtml += renderRelatorioDiaHtml(dia.periodoLabel, resumo);
+                diasGerados.push({ periodoLabel: dia.periodoLabel, resumo });
             }
 
-            window._relatorioData = filtrados;
-            window._relatorioPeriodo = periodoLabel;
-            window._relatorioResumo = resumo;
+            const qtdDias = porDia.length;
+            container.innerHTML = `
+                <p class="rel-footer-note"><i class="fas fa-check-circle"></i> ${qtdDias} relatório${qtdDias === 1 ? '' : 's'} individual${qtdDias === 1 ? '' : 'ais'} (um por dia) ${qtdDias === 1 ? 'gerado' : 'gerados'} e salvo${qtdDias === 1 ? '' : 's'} no histórico — nenhum registro é compartilhado entre dias diferentes.</p>
+                ${blocosHtml}
+            `;
 
-            await salvarRelatorio(resumo, dataIni, dataFim, periodoLabel);
+            window._relatorioDiasGerados = diasGerados;
             renderHistoricoRelatorios();
         } catch (e) {
             alert('Erro ao gerar relatório.');
@@ -908,50 +996,20 @@
         }
     }
 
-    // ===== IMPRIMIR RELATÓRIO =====
+    // ===== IMPRIMIR RELATÓRIO(S) =====
+    // Imprime todos os blocos de período (dias) gerados na última chamada de Gerar Relatório
+    // ou exibidos via Visualizar no histórico — cada período em sua própria seção, sem misturar.
     function imprimirRelatorio() {
-        const resumo = window._relatorioResumo;
-        if (!resumo) {
+        const dias = window._relatorioDiasGerados;
+        if (!dias || dias.length === 0) {
             alert('Gere o relatório primeiro.');
             return;
         }
-        const periodo = window._relatorioPeriodo || (document.getElementById('relDataInicial').value + ' a ' + document.getElementById('relDataFinal').value);
-        const registros = window._relatorioData;
 
-        let linhasBreak = '';
-        resumo.porProduto.forEach(p => {
-            const pct = resumo.totalValor > 0 ? ((p.totalValor / resumo.totalValor) * 100).toFixed(1) + '%' : '0,0%';
-            linhasBreak += `<tr>
-                <td>${p.codigo}</td><td>${p.produto}</td>
-                <td style="text-align:right;">${p.qtd}</td>
-                <td style="text-align:right;">${formatPeso(p.totalKg)}</td>
-                <td style="text-align:right;">${formatMoeda(p.totalValor)}</td>
-                <td style="text-align:right;">${pct}</td>
-            </tr>`;
+        let blocosHtml = '';
+        dias.forEach((dia, idx) => {
+            blocosHtml += renderRelatorioDiaPrintHtml(dia.periodoLabel, dia.resumo, idx > 0);
         });
-
-        let detalheSecao = '';
-        if (registros && registros.length) {
-            let linhasDet = '';
-            registros.forEach(r => {
-                const d = new Date(r.dataHora);
-                linhasDet += `<tr>
-                    <td>${gerarIdDisplay(r.id)}</td><td>${formatDate(d)}</td><td>${formatTime(d)}</td>
-                    <td>${r.codigo}</td><td>${r.produto}</td>
-                    <td style="text-align:right;">${formatPeso(r.pesoKg)}</td>
-                    <td style="text-align:right;">${formatMoeda(r.valorKg)}</td>
-                    <td style="text-align:right;">${formatMoeda(r.valorTotal)}</td>
-                    <td>${(r.observacao || '').slice(0, 25)}</td>
-                </tr>`;
-            });
-            detalheSecao = `
-                <h2 style="font-size:0.95rem; margin:20px 0 8px; color:#101828;">Registros Detalhados</h2>
-                <table><thead><tr>
-                    <th>ID</th><th>Data</th><th>Hora</th><th>Código</th><th>Produto</th>
-                    <th>Peso</th><th>Valor/kg</th><th>Total</th><th>Obs.</th>
-                </tr></thead><tbody>${linhasDet}</tbody></table>
-            `;
-        }
 
         const printContent = document.getElementById('relatorioPrint');
         printContent.innerHTML = `
@@ -960,38 +1018,7 @@
                     <h1 style="font-size:1.3rem; font-weight:800; letter-spacing:-0.3px;">REGISTRO DE QUEBRAS — PADARIA</h1>
                     <span style="font-size:0.78rem; color:#667085;">Relatório de auditoria</span>
                 </div>
-                <p style="color:#475569; margin-bottom:14px; font-size:0.88rem;">Período: ${periodo}</p>
-
-                <div style="display:flex; gap:12px; margin-bottom:18px;">
-                    <div style="flex:1; border:1px solid #ccc; border-radius:8px; padding:10px 14px;">
-                        <div style="font-size:0.68rem; text-transform:uppercase; color:#667085; font-weight:700;">Registros</div>
-                        <div style="font-size:1.2rem; font-weight:800; color:#101828;">${resumo.totalRegistros}</div>
-                    </div>
-                    <div style="flex:1; border:1px solid #ccc; border-radius:8px; padding:10px 14px;">
-                        <div style="font-size:0.68rem; text-transform:uppercase; color:#667085; font-weight:700;">Total em Kg</div>
-                        <div style="font-size:1.2rem; font-weight:800; color:#101828;">${formatPeso(resumo.totalPesoKg)}</div>
-                    </div>
-                    <div style="flex:1; border:1px solid #1a4972; border-radius:8px; padding:10px 14px; background:#e8f0f8;">
-                        <div style="font-size:0.68rem; text-transform:uppercase; color:#0f3452; font-weight:700;">Total em R$</div>
-                        <div style="font-size:1.2rem; font-weight:800; color:#0f3452;">${formatMoeda(resumo.totalValor)}</div>
-                    </div>
-                </div>
-
-                <h2 style="font-size:0.95rem; margin-bottom:8px; color:#101828;">Total por Produto</h2>
-                <table>
-                    <thead><tr><th>Código</th><th>Produto</th><th>Registros</th><th>Total Kg</th><th>Total R$</th><th>% valor</th></tr></thead>
-                    <tbody>${linhasBreak}</tbody>
-                    <tfoot><tr style="font-weight:800; background:#f1f5f9;">
-                        <td colspan="2">TOTAL GERAL</td>
-                        <td style="text-align:right;">${resumo.totalRegistros}</td>
-                        <td style="text-align:right;">${formatPeso(resumo.totalPesoKg)}</td>
-                        <td style="text-align:right;">${formatMoeda(resumo.totalValor)}</td>
-                        <td style="text-align:right;">100%</td>
-                    </tr></tfoot>
-                </table>
-
-                ${detalheSecao}
-
+                ${blocosHtml}
                 <p style="margin-top:18px; color:#667085; font-size:0.78rem;">Gerado em ${formatDateTime(new Date())}</p>
             </div>
         `;
@@ -1000,10 +1027,13 @@
             <html><head><title>Relatório de Quebras</title>
             <style>
                 body { font-family: system-ui, sans-serif; padding:20px; }
-                table { width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:12px; }
-                th { background:#f1f5f9; text-align:left; padding:8px 10px; border:1px solid #ccc; }
-                td { padding:8px 10px; border:1px solid #ccc; }
-                @media print { body { padding:0; } }
+                table { width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:10px; }
+                th { background:#f1f5f9; text-align:left; padding:7px 9px; border:1px solid #ccc; }
+                td { padding:7px 9px; border:1px solid #ccc; }
+                @media print {
+                    body { padding:0; }
+                    .rel-print-periodo.quebra-pagina { page-break-before: always; }
+                }
             </style>
             </head><body>
             ${printContent.innerHTML}
@@ -1013,6 +1043,62 @@
             </body></html>
         `);
         printWindow.document.close();
+    }
+
+    // Monta o HTML de impressão de UM período: cabeçalho + totais + produtos (com registros) + total geral.
+    function renderRelatorioDiaPrintHtml(periodoLabel, resumo, quebraPagina) {
+        let produtosHtml = '';
+        (resumo.porProduto || []).forEach(p => {
+            let linhas = '';
+            p.registros.forEach(r => {
+                const d = new Date(r.dataHora);
+                linhas += `<tr>
+                    <td>${gerarIdDisplay(r.id)}</td><td>${formatDate(d)}</td><td>${formatTime(d)}</td>
+                    <td>${r.codigo}</td><td>${r.produto}</td>
+                    <td style="text-align:right;">${formatPeso(r.pesoKg)}</td>
+                    <td style="text-align:right;">${formatMoeda(r.valorKg)}</td>
+                    <td style="text-align:right;">${formatMoeda(r.valorTotal)}</td>
+                    <td>${(r.observacao || '').slice(0, 25)}</td>
+                </tr>`;
+            });
+            produtosHtml += `
+                <div style="margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; background:#f1f5f9; padding:7px 10px; border-radius:6px 6px 0 0; border:1px solid #ccc; border-bottom:none;">
+                        <strong style="font-size:0.85rem;">${p.codigo} — ${p.produto}</strong>
+                        <span style="font-size:0.78rem; color:#475569;">${p.qtd} reg. &nbsp;|&nbsp; ${formatPeso(p.totalKg)} &nbsp;|&nbsp; ${formatMoeda(p.totalValor)}</span>
+                    </div>
+                    <table style="margin-bottom:0;"><thead><tr>
+                        <th>ID</th><th>Data</th><th>Hora</th><th>Código</th><th>Produto</th>
+                        <th>Peso</th><th>Valor/kg</th><th>Total</th><th>Obs.</th>
+                    </tr></thead><tbody>${linhas}</tbody></table>
+                </div>
+            `;
+        });
+
+        return `
+            <div class="rel-print-periodo${quebraPagina ? ' quebra-pagina' : ''}" style="margin-top:22px;">
+                <h2 style="font-size:1.05rem; color:#101828; border-bottom:1px solid #ccc; padding-bottom:6px; margin-bottom:12px;">Relatório — ${periodoLabel}</h2>
+                <div style="display:flex; gap:12px; margin-bottom:16px;">
+                    <div style="flex:1; border:1px solid #ccc; border-radius:8px; padding:10px 14px;">
+                        <div style="font-size:0.68rem; text-transform:uppercase; color:#667085; font-weight:700;">Registros</div>
+                        <div style="font-size:1.1rem; font-weight:800; color:#101828;">${resumo.totalRegistros}</div>
+                    </div>
+                    <div style="flex:1; border:1px solid #ccc; border-radius:8px; padding:10px 14px;">
+                        <div style="font-size:0.68rem; text-transform:uppercase; color:#667085; font-weight:700;">Total em Kg</div>
+                        <div style="font-size:1.1rem; font-weight:800; color:#101828;">${formatPeso(resumo.totalPesoKg)}</div>
+                    </div>
+                    <div style="flex:1; border:1px solid #1a4972; border-radius:8px; padding:10px 14px; background:#e8f0f8;">
+                        <div style="font-size:0.68rem; text-transform:uppercase; color:#0f3452; font-weight:700;">Total em R$</div>
+                        <div style="font-size:1.1rem; font-weight:800; color:#0f3452;">${formatMoeda(resumo.totalValor)}</div>
+                    </div>
+                </div>
+                ${produtosHtml}
+                <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #101828; padding-top:8px; margin-top:4px; font-weight:800;">
+                    <span>TOTAL GERAL DO PERÍODO</span>
+                    <span>${resumo.totalRegistros} registros &nbsp;|&nbsp; ${formatPeso(resumo.totalPesoKg)} &nbsp;|&nbsp; ${formatMoeda(resumo.totalValor)}</span>
+                </div>
+            </div>
+        `;
     }
 
     // ===== EXPORTAR DADOS =====
@@ -1597,18 +1683,33 @@
                     const todos = await obterTodosRegistros();
                     const inicio = new Date(dataIni + 'T00:00:00');
                     const fim = new Date(dataFim + 'T23:59:59');
-                    const filtrados = todos.filter(r => {
+                    const noIntervalo = todos.filter(r => {
                         const d = new Date(r.dataHora);
                         return d >= inicio && d <= fim;
                     });
-                    if (filtrados.length === 0) { alert('Nenhum registro no período.'); return; }
-                    const periodoLabel = `${formatDate(inicio)} a ${formatDate(fim)}`;
-                    exportarPDF(filtrados, periodoLabel);
+                    if (noIntervalo.length === 0) { alert('Nenhum registro no período.'); return; }
+
+                    // Cada dia do intervalo vira um bloco separado no PDF — nunca um único
+                    // relatório somando o intervalo inteiro.
+                    const porDia = agruparRegistrosPorDia(noIntervalo);
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF('landscape', 'mm', 'a4');
+                    porDia.forEach((dia, idx) => {
+                        if (idx > 0) doc.addPage();
+                        const resumo = calcularResumoRelatorio(dia.registros);
+                        desenharBlocoRelatorioPDF(doc, dia.periodoLabel, resumo);
+                    });
+                    doc.save(`relatorio_quebras_${new Date().toISOString().slice(0,10)}.pdf`);
                 } catch (e) {
                     alert('Erro ao gerar PDF.');
                     console.error(e);
                 }
             });
+
+            const btnPdfCompleto = document.getElementById('btnPdfCompleto');
+            if (btnPdfCompleto) {
+                btnPdfCompleto.addEventListener('click', exportarPDFCompleto);
+            }
 
             // ===== CONFIGURAÇÕES =====
             document.getElementById('btnExportarBackup').addEventListener('click', exportarBackup);

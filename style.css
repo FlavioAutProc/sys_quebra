@@ -857,18 +857,129 @@ textarea { resize: vertical; min-height: 60px; }
 
 .rel-section-title i { color: var(--primary); }
 
-/* A tabela de total por produto não precisa do scroll fixo da tabela de detalhe */
-.rel-breakdown-tabela { display: table !important; max-height: none !important; overflow: visible !important; }
+.rel-detail-wrap.hidden { display: none; }
 
-.rel-breakdown-tabela tfoot td {
-    font-weight: 800;
-    background: var(--bg-primary);
-    border-top: 2px solid var(--border-color-strong);
-    font-family: var(--font-mono);
-    color: var(--text-primary);
+/* ===== BLOCO DE PERÍODO (1 dia = 1 relatório) ===== */
+.rel-periodo-bloco {
+    margin-bottom: 32px;
+    padding-bottom: 26px;
+    border-bottom: 2px dashed var(--border-color-strong);
 }
 
-.rel-detail-wrap.hidden { display: none; }
+.rel-periodo-bloco:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.rel-periodo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 6px 0 14px;
+}
+
+.rel-periodo-titulo {
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rel-periodo-titulo i { color: var(--primary); }
+
+/* ===== BLOCOS POR PRODUTO (dentro de um período) ===== */
+.rel-produtos-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.rel-produto-bloco {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.rel-produto-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--bg-primary);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rel-produto-nome {
+    font-size: 0.83rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.rel-produto-nome i { color: var(--primary); }
+
+.rel-produto-totais {
+    display: flex;
+    gap: 14px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.rel-produto-totais strong { color: var(--primary-dark); }
+
+.rel-produto-bloco .relatorio-tabela {
+    border: none;
+    border-radius: 0;
+    max-height: 340px;
+}
+
+/* ===== TOTAL GERAL DO PERÍODO ===== */
+.rel-total-geral {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--primary-light);
+    border: 1px solid rgba(var(--primary-rgb), 0.25);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    margin-top: 4px;
+}
+
+.rel-total-geral-label {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--primary-dark);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.rel-total-geral-label i { color: var(--primary); }
+
+.rel-total-geral-valores {
+    display: flex;
+    gap: 18px;
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--primary-dark);
+}
 
 .rel-footer-note {
     font-size: 0.78rem;
