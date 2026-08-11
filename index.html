@@ -25,8 +25,123 @@
 
         <main id="pageContainer">
 
+            <!-- PAGE: DASHBOARD -->
+            <section id="page-dashboard" class="page active">
+                <div class="page-header">
+                    <h2><i class="fas fa-chart-pie"></i> Dashboard</h2>
+                    <p>Visão gerencial das quebras registradas.</p>
+                </div>
+
+                <div class="dash-filtros">
+                    <div class="form-row dash-filtros-row">
+                        <div class="form-group">
+                            <label for="dashDataInicial"><i class="fas fa-calendar-alt"></i> Período inicial</label>
+                            <input type="date" id="dashDataInicial" />
+                        </div>
+                        <div class="form-group">
+                            <label for="dashDataFinal"><i class="fas fa-calendar-alt"></i> Período final</label>
+                            <input type="date" id="dashDataFinal" />
+                        </div>
+                        <div class="form-group">
+                            <label for="dashProdutoFiltro"><i class="fas fa-tag"></i> Produto</label>
+                            <select id="dashProdutoFiltro">
+                                <option value="">Todos os produtos</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions dash-filtros-actions">
+                        <button type="button" class="btn btn-outline btn-sm" id="btnDashLimpar"><i class="fas fa-eraser"></i> Limpar filtros</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="btnDashAplicar"><i class="fas fa-filter"></i> Aplicar filtros</button>
+                    </div>
+                </div>
+
+                <div class="dash-kpis" id="dashKpis"></div>
+
+                <div class="dash-section">
+                    <div class="section-heading">
+                        <div>
+                            <h3><i class="fas fa-ranking-star"></i> Produtos com maior quebra</h3>
+                            <span class="section-sub">Ranking dos produtos no período filtrado</span>
+                        </div>
+                        <div class="dash-toggle-group" id="dashRankingToggle">
+                            <button type="button" class="dash-toggle active" data-sort="kg">Maior Kg</button>
+                            <button type="button" class="dash-toggle" data-sort="valor">Maior R$</button>
+                            <button type="button" class="dash-toggle" data-sort="qtd">Maior qtd.</button>
+                        </div>
+                    </div>
+                    <div id="dashRankingProdutos"></div>
+                </div>
+
+                <div class="dash-section">
+                    <div class="section-heading">
+                        <div>
+                            <h3><i class="fas fa-chart-bar"></i> Quebra por Produto</h3>
+                            <span class="section-sub">Top produtos por peso quebrado (kg)</span>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-sm" id="btnDashVerTodosBarras" style="display:none;">Ver todos</button>
+                    </div>
+                    <div id="dashGraficoBarras"></div>
+                </div>
+
+                <div class="dash-grid-2">
+                    <div class="dash-section">
+                        <div class="section-heading">
+                            <div>
+                                <h3><i class="fas fa-calendar-days"></i> Períodos com maior quebra</h3>
+                            </div>
+                        </div>
+                        <div id="dashPeriodosTabela"></div>
+                    </div>
+
+                    <div class="dash-section">
+                        <div class="section-heading">
+                            <div>
+                                <h3><i class="fas fa-chart-line"></i> Tendência das Quebras</h3>
+                            </div>
+                            <div class="dash-toggle-group" id="dashTendenciaToggle">
+                                <button type="button" class="dash-toggle active" data-metrica="kg">Kg</button>
+                                <button type="button" class="dash-toggle" data-metrica="valor">R$</button>
+                                <button type="button" class="dash-toggle" data-metrica="qtd">Qtd.</button>
+                            </div>
+                        </div>
+                        <div id="dashGraficoTendencia"></div>
+                    </div>
+                </div>
+
+                <div class="dash-section" id="dashAtencaoWrap" style="display:none;">
+                    <div class="section-heading">
+                        <div>
+                            <h3><i class="fas fa-triangle-exclamation" style="color:var(--warning);"></i> Atenção</h3>
+                            <span class="section-sub">Produtos e comportamentos que merecem um olhar mais de perto</span>
+                        </div>
+                    </div>
+                    <div id="dashAtencao"></div>
+                </div>
+
+                <div class="dash-section" id="dashParticipacaoWrap" style="display:none;">
+                    <div class="section-heading">
+                        <div>
+                            <h3><i class="fas fa-chart-pie"></i> Participação dos produtos</h3>
+                            <span class="section-sub">Fatia de cada produto no total quebrado (kg)</span>
+                        </div>
+                    </div>
+                    <div id="dashParticipacao"></div>
+                </div>
+
+                <div class="dash-section">
+                    <div class="section-heading">
+                        <div>
+                            <h3><i class="fas fa-file-alt"></i> Relatórios recentes</h3>
+                            <span class="section-sub">Acesso rápido aos últimos relatórios salvos</span>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-sm" id="btnDashVerTodosRelatorios"><i class="fas fa-clock-rotate-left"></i> Ver todos os relatórios</button>
+                    </div>
+                    <div id="dashRelatoriosRecentes"></div>
+                </div>
+            </section>
+
             <!-- PAGE: REGISTRAR -->
-            <section id="page-registrar" class="page active">
+            <section id="page-registrar" class="page">
                 <div class="page-header">
                     <h2><i class="fas fa-pen-alt"></i> Registrar Quebra</h2>
                     <p>Preencha os dados do produto e adicione uma evidência.</p>
@@ -246,7 +361,11 @@
 
         <!-- ===== BOTTOM NAV ===== -->
         <nav id="bottomNav">
-            <button class="nav-btn active" data-page="registrar">
+            <button class="nav-btn active" data-page="dashboard">
+                <span class="nav-icon"><i class="fas fa-chart-pie"></i></span>
+                <span class="nav-label">Dashboard</span>
+            </button>
+            <button class="nav-btn" data-page="registrar">
                 <span class="nav-icon"><i class="fas fa-pen-alt"></i></span>
                 <span class="nav-label">Registrar</span>
             </button>

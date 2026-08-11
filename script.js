@@ -1277,6 +1277,579 @@
         }
     });
 
+    // ===== DASHBOARD GERENCIAL =====
+    // Camada de LEITURA/ANÁLISE apenas: consulta os registros (STORE_REGISTROS) e os
+    // relatórios já salvos (STORE_RELATORIOS) e calcula tudo em memória, reutilizando
+    // calcularResumoRelatorio / agruparRegistrosPorDia / desenharBlocoRelatorioPDF já
+    // existentes. Não cria nenhuma store nova nem duplica registros.
+
+    let dashSortRanking = 'kg';
+    let dashMetricaTendencia = 'kg';
+    let dashVerTodosBarras = false;
+    let dashCacheResumo = null;   // último resumo (porProduto) calculado
+    let dashCachePorDia = null;   // últimos totais por dia calculados
+    let dashCacheRelatorios = []; // último snapshot de relatoriosSalvos
+
+    function dashEmptyStateHtml(msg) {
+        return `
+            <div class="empty-state dash-empty">
+                <span class="empty-icon"><i class="fas fa-chart-simple"></i></span>
+                <p>${msg || 'Sem dados suficientes para este período.'}</p>
+            </div>
+        `;
+    }
+
+    // Filtra os registros originais pelo intervalo de datas e produto do Dashboard,
+    // sem alterar nem duplicar os registros — apenas leitura.
+    function filtrarRegistrosDashboard(registros, dataIni, dataFim, produtoCodigo) {
+        let filtrados = registros;
+        if (dataIni && dataFim) {
+            const inicio = new Date(dataIni + 'T00:00:00');
+            const fim = new Date(dataFim + 'T23:59:59');
+            filtrados = filtrados.filter(r => {
+                const d = new Date(r.dataHora);
+                return d >= inicio && d <= fim;
+            });
+        }
+        if (produtoCodigo) {
+            filtrados = filtrados.filter(r => r.codigo === produtoCodigo);
+        }
+        return filtrados;
+    }
+
+    // ===== KPIs =====
+    function renderDashKpis(resumo) {
+        const container = document.getElementById('dashKpis');
+        if (!container) return;
+        const maiorKg = resumo.porProduto.length
+            ? resumo.porProduto.slice().sort((a, b) => b.totalKg - a.totalKg)[0]
+            : null;
+        container.innerHTML = `
+            <div class="dash-kpi-card dash-kpi-blue">
+                <span class="dash-kpi-icon"><i class="fas fa-clipboard-list"></i></span>
+                <span class="dash-kpi-label">Registros</span>
+                <span class="dash-kpi-value">${resumo.totalRegistros}</span>
+                <span class="dash-kpi-sub">Quebras registradas</span>
+            </div>
+            <div class="dash-kpi-card dash-kpi-green">
+                <span class="dash-kpi-icon"><i class="fas fa-weight-scale"></i></span>
+                <span class="dash-kpi-label">Peso total</span>
+                <span class="dash-kpi-value">${formatPeso(resumo.totalPesoKg)}</span>
+                <span class="dash-kpi-sub">Total de quebras</span>
+            </div>
+            <div class="dash-kpi-card dash-kpi-amber">
+                <span class="dash-kpi-icon"><i class="fas fa-sack-dollar"></i></span>
+                <span class="dash-kpi-label">Valor total</span>
+                <span class="dash-kpi-value">${formatMoeda(resumo.totalValor)}</span>
+                <span class="dash-kpi-sub">Total das quebras</span>
+            </div>
+            <div class="dash-kpi-card dash-kpi-purple">
+                <span class="dash-kpi-icon"><i class="fas fa-award"></i></span>
+                <span class="dash-kpi-label">Maior quebra (por Kg)</span>
+                <span class="dash-kpi-value dash-kpi-value-sm">${maiorKg ? maiorKg.produto : '—'}</span>
+                <span class="dash-kpi-sub">${maiorKg ? `${formatPeso(maiorKg.totalKg)} • ${formatMoeda(maiorKg.totalValor)}` : 'Sem dados no período'}</span>
+            </div>
+        `;
+    }
+
+    // ===== RANKING DE PRODUTOS =====
+    function renderDashRanking(porProduto, sortKey) {
+        const container = document.getElementById('dashRankingProdutos');
+        if (!container) return;
+        if (!porProduto.length) {
+            container.innerHTML = dashEmptyStateHtml('Nenhum produto com quebra no período selecionado.');
+            return;
+        }
+        const totalKgGeral = porProduto.reduce((s, p) => s + p.totalKg, 0);
+        const totalValorGeral = porProduto.reduce((s, p) => s + p.totalValor, 0);
+        const campo = sortKey === 'valor' ? 'totalValor' : (sortKey === 'qtd' ? 'qtd' : 'totalKg');
+        const ordenado = porProduto.slice().sort((a, b) => b[campo] - a[campo]);
+        let html = '<div class="dash-ranking-list">';
+        ordenado.forEach((p, idx) => {
+            const pctKg = totalKgGeral ? (p.totalKg / totalKgGeral * 100) : 0;
+            const pctValor = totalValorGeral ? (p.totalValor / totalValorGeral * 100) : 0;
+            html += `
+                <div class="dash-ranking-item">
+                    <span class="dash-rank-pos">${idx + 1}</span>
+                    <span class="dash-rank-info">
+                        <span class="dash-rank-nome">${p.codigo} — ${p.produto}</span>
+                        <span class="dash-rank-meta">${p.qtd} registro${p.qtd === 1 ? '' : 's'} · ${formatPeso(p.totalKg)} · ${formatMoeda(p.totalValor)}</span>
+                    </span>
+                    <span class="dash-rank-pct">
+                        <span>${pctKg.toFixed(1)}% kg</span>
+                        <span>${pctValor.toFixed(1)}% R$</span>
+                    </span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    // ===== GRÁFICO: QUEBRA POR PRODUTO (barras horizontais) =====
+    function renderDashBarChart(porProduto, verTodos) {
+        const container = document.getElementById('dashGraficoBarras');
+        const btnVerTodos = document.getElementById('btnDashVerTodosBarras');
+        if (!container) return;
+        if (!porProduto.length) {
+            container.innerHTML = dashEmptyStateHtml('Nenhum produto com quebra no período selecionado.');
+            if (btnVerTodos) btnVerTodos.style.display = 'none';
+            return;
+        }
+        const ordenado = porProduto.slice().sort((a, b) => b.totalKg - a.totalKg);
+        const lista = verTodos ? ordenado : ordenado.slice(0, 10);
+        const max = ordenado[0].totalKg || 1;
+        let html = '<div class="dash-bar-chart">';
+        lista.forEach(p => {
+            const pct = Math.max(2, (p.totalKg / max * 100));
+            html += `
+                <div class="dash-bar-row">
+                    <span class="dash-bar-label" title="${p.codigo} — ${p.produto}">${p.produto}</span>
+                    <span class="dash-bar-track"><span class="dash-bar-fill" style="width:${pct.toFixed(1)}%"></span></span>
+                    <span class="dash-bar-value">${formatPeso(p.totalKg)}</span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        if (btnVerTodos) {
+            btnVerTodos.style.display = ordenado.length > 10 ? 'inline-flex' : 'none';
+            btnVerTodos.innerHTML = verTodos
+                ? '<i class="fas fa-chevron-up"></i> Ver top 10'
+                : '<i class="fas fa-chevron-down"></i> Ver todos';
+        }
+    }
+
+    // ===== GRÁFICO: TENDÊNCIA DAS QUEBRAS (linha em SVG) =====
+    function dashFormatEixo(valor, metrica) {
+        if (metrica === 'valor') return 'R$ ' + Math.round(valor);
+        if (metrica === 'qtd') return String(Math.round(valor));
+        return Math.round(valor) + 'kg';
+    }
+
+    function renderDashTendencia(porDia, metrica) {
+        const container = document.getElementById('dashGraficoTendencia');
+        if (!container) return;
+        if (!porDia.length) {
+            container.innerHTML = dashEmptyStateHtml('Sem períodos suficientes para traçar a tendência.');
+            return;
+        }
+        const campo = metrica === 'valor' ? 'totalValor' : (metrica === 'qtd' ? 'totalRegistros' : 'totalPesoKg');
+        const valores = porDia.map(d => d.resumo[campo]);
+        const max = Math.max(...valores, 1);
+        const w = 640, h = 220, padL = 44, padR = 12, padT = 14, padB = 30;
+        const innerW = w - padL - padR, innerH = h - padT - padB;
+        const n = porDia.length;
+        const pontos = porDia.map((d, i) => ({
+            x: padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW),
+            y: padT + innerH - (valores[i] / max) * innerH,
+            label: d.periodoLabel,
+            valor: valores[i]
+        }));
+        const pathD = pontos.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+        const baseY = (padT + innerH).toFixed(1);
+        const areaD = `${pathD} L ${pontos[n - 1].x.toFixed(1)} ${baseY} L ${pontos[0].x.toFixed(1)} ${baseY} Z`;
+
+        let gridHtml = '';
+        for (let i = 0; i <= 3; i++) {
+            const gy = padT + innerH - (i / 3) * innerH;
+            const val = max * i / 3;
+            gridHtml += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}" stroke="var(--border-color)" stroke-width="1" />`;
+            gridHtml += `<text x="${padL - 6}" y="${(gy + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--text-muted)">${dashFormatEixo(val, metrica)}</text>`;
+        }
+        let xLabelsHtml = '';
+        const step = Math.max(1, Math.ceil(n / 6));
+        pontos.forEach((p, i) => {
+            if (i % step === 0 || i === n - 1) {
+                xLabelsHtml += `<text x="${p.x.toFixed(1)}" y="${h - 8}" font-size="9" text-anchor="middle" fill="var(--text-muted)">${p.label.slice(0, 5)}</text>`;
+            }
+        });
+        const dotsHtml = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--primary)" stroke="#fff" stroke-width="1.5"><title>${p.label}: ${dashFormatEixo(p.valor, metrica)}</title></circle>`).join('');
+
+        container.innerHTML = `
+            <svg viewBox="0 0 ${w} ${h}" class="dash-trend-svg" preserveAspectRatio="xMidYMid meet">
+                ${gridHtml}
+                <path d="${areaD}" fill="rgba(var(--primary-rgb), 0.08)" stroke="none"></path>
+                <path d="${pathD}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>
+                ${dotsHtml}
+                ${xLabelsHtml}
+            </svg>
+        `;
+    }
+
+    // ===== PERÍODOS COM MAIOR QUEBRA =====
+    function renderDashPeriodos(porDia) {
+        const container = document.getElementById('dashPeriodosTabela');
+        if (!container) return;
+        if (!porDia.length) {
+            container.innerHTML = dashEmptyStateHtml('Nenhum período com registros neste intervalo.');
+            return;
+        }
+        const ordenado = porDia.slice().sort((a, b) => b.resumo.totalPesoKg - a.resumo.totalPesoKg).slice(0, 8);
+        let html = '<div class="dash-periodos-table">';
+        html += `
+            <div class="dash-periodos-row dash-periodos-header">
+                <span>Período</span><span>Reg.</span><span>Kg</span><span>R$</span><span></span>
+            </div>
+        `;
+        ordenado.forEach(d => {
+            html += `
+                <div class="dash-periodos-row">
+                    <span>${d.periodoLabel}</span>
+                    <span>${d.resumo.totalRegistros}</span>
+                    <span>${formatPeso(d.resumo.totalPesoKg)}</span>
+                    <span>${formatMoeda(d.resumo.totalValor)}</span>
+                    <span class="dash-periodo-acoes">
+                        <button type="button" class="btn btn-sm btn-outline dash-periodo-ver" data-chave="${d.chaveDia}" title="Visualizar"><i class="fas fa-eye"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline dash-periodo-pdf" data-chave="${d.chaveDia}" title="PDF deste período"><i class="fas fa-file-pdf"></i></button>
+                    </span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+
+        container.querySelectorAll('.dash-periodo-ver').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const dia = porDia.find(d => d.chaveDia === btn.dataset.chave);
+                if (!dia) return;
+                navegarPara('relatorios');
+                exibirResumoSalvo({
+                    periodoLabel: dia.periodoLabel,
+                    periodoInicio: dia.chaveDia,
+                    periodoFim: dia.chaveDia,
+                    totalRegistros: dia.resumo.totalRegistros,
+                    totalPesoKg: dia.resumo.totalPesoKg,
+                    totalValor: dia.resumo.totalValor,
+                    porProduto: dia.resumo.porProduto
+                });
+            });
+        });
+        container.querySelectorAll('.dash-periodo-pdf').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const dia = porDia.find(d => d.chaveDia === btn.dataset.chave);
+                if (!dia) return;
+                // Usa o relatório individual já salvo daquele dia, se existir; caso contrário,
+                // gera o PDF a partir do mesmo cálculo (calcularResumoRelatorio), sem criar
+                // um relatório "diferente" nem duplicar a fonte de dados.
+                const existente = dashCacheRelatorios.find(r => r.periodoChave === dia.chaveDia + '_' + dia.chaveDia);
+                if (existente) {
+                    exportarPDFRelatorioSalvo(existente);
+                    return;
+                }
+                if (!dia.resumo.totalRegistros) {
+                    alert('Nenhum registro neste período.');
+                    return;
+                }
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('landscape', 'mm', 'a4');
+                desenharBlocoRelatorioPDF(doc, dia.periodoLabel, dia.resumo);
+                doc.save(`relatorio_quebras_${dia.chaveDia}.pdf`);
+            });
+        });
+    }
+
+    // ===== ATENÇÃO (alertas gerenciais) =====
+    // Critérios estatísticos simples (média, desvio padrão e fatia proporcional) — nunca
+    // limites fixos "inventados" — e cada alerta só aparece se houver amostra suficiente.
+    function calcularAlertasDashboard(porProduto, porDia) {
+        const alertas = [];
+        if (!porProduto.length) return alertas;
+
+        const totalKgGeral = porProduto.reduce((s, p) => s + p.totalKg, 0);
+        const totalValorGeral = porProduto.reduce((s, p) => s + p.totalValor, 0);
+
+        const maiorKg = porProduto.slice().sort((a, b) => b.totalKg - a.totalKg)[0];
+        if (maiorKg) {
+            alertas.push({
+                icone: 'fa-crown',
+                titulo: `${maiorKg.produto} é o produto com maior quebra`,
+                detalhe: `${formatPeso(maiorKg.totalKg)} · ${formatMoeda(maiorKg.totalValor)} no período (${maiorKg.qtd} registro${maiorKg.qtd === 1 ? '' : 's'})`
+            });
+        }
+
+        if (porProduto.length >= 3) {
+            const media = totalKgGeral / porProduto.length;
+            const variancia = porProduto.reduce((s, p) => s + Math.pow(p.totalKg - media, 2), 0) / porProduto.length;
+            const desvio = Math.sqrt(variancia);
+            if (desvio > 0) {
+                porProduto
+                    .filter(p => p !== maiorKg && p.totalKg > media + desvio)
+                    .slice(0, 2)
+                    .forEach(p => {
+                        alertas.push({
+                            icone: 'fa-arrow-trend-up',
+                            titulo: `${p.produto} está bem acima da média de quebra`,
+                            detalhe: `${formatPeso(p.totalKg)} no período, contra uma média de ${formatPeso(media)} por produto`
+                        });
+                    });
+            }
+        }
+
+        if (porProduto.length >= 3 && totalValorGeral > 0) {
+            const fatiaUniforme = 100 / porProduto.length;
+            porProduto.forEach(p => {
+                const pct = (p.totalValor / totalValorGeral) * 100;
+                if (pct > fatiaUniforme * 2 && pct > 20 && !alertas.some(a => a.titulo.includes(p.produto))) {
+                    alertas.push({
+                        icone: 'fa-sack-dollar',
+                        titulo: `${p.produto} concentra grande parte do valor perdido`,
+                        detalhe: `${pct.toFixed(1)}% do valor total de quebras do período (${formatMoeda(p.totalValor)})`
+                    });
+                }
+            });
+        }
+
+        if (porDia.length >= 4) {
+            const meio = Math.floor(porDia.length / 2);
+            const somarKgPorProduto = (dias) => {
+                const mapa = {};
+                dias.forEach(d => d.resumo.porProduto.forEach(p => {
+                    mapa[p.codigo] = (mapa[p.codigo] || 0) + p.totalKg;
+                }));
+                return mapa;
+            };
+            const antes = somarKgPorProduto(porDia.slice(0, meio));
+            const depois = somarKgPorProduto(porDia.slice(meio));
+            porProduto.forEach(p => {
+                const antesKg = antes[p.codigo] || 0;
+                const depoisKg = depois[p.codigo] || 0;
+                if (antesKg > 0 && depoisKg > antesKg * 1.5 && (depoisKg - antesKg) > 0.5 && !alertas.some(a => a.titulo.includes(p.produto))) {
+                    alertas.push({
+                        icone: 'fa-chart-line',
+                        titulo: `${p.produto} aumentou na segunda metade do período`,
+                        detalhe: `De ${formatPeso(antesKg)} para ${formatPeso(depoisKg)}, comparando a 1ª com a 2ª metade do intervalo`
+                    });
+                }
+            });
+        }
+
+        return alertas.slice(0, 5);
+    }
+
+    function renderDashAtencao(alertas) {
+        const wrap = document.getElementById('dashAtencaoWrap');
+        const container = document.getElementById('dashAtencao');
+        if (!wrap || !container) return;
+        if (!alertas.length) {
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+        let html = '<div class="dash-alertas-list">';
+        alertas.forEach(a => {
+            html += `
+                <div class="dash-alerta-item">
+                    <span class="dash-alerta-icon"><i class="fas ${a.icone}"></i></span>
+                    <span class="dash-alerta-body">
+                        <span class="dash-alerta-titulo">${a.titulo}</span>
+                        <span class="dash-alerta-detalhe">${a.detalhe}</span>
+                    </span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    // ===== PARTICIPAÇÃO DOS PRODUTOS (donut) =====
+    function renderDashParticipacao(porProduto) {
+        const wrap = document.getElementById('dashParticipacaoWrap');
+        const container = document.getElementById('dashParticipacao');
+        if (!wrap || !container) return;
+        const totalKg = porProduto.reduce((s, p) => s + p.totalKg, 0);
+        if (porProduto.length < 4 || totalKg <= 0) {
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+        const ordenado = porProduto.slice().sort((a, b) => b.totalKg - a.totalKg);
+        const top = ordenado.slice(0, 4);
+        const outrosKg = ordenado.slice(4).reduce((s, p) => s + p.totalKg, 0);
+        const fatias = top.map(p => ({ nome: p.produto, kg: p.totalKg }));
+        if (outrosKg > 0) fatias.push({ nome: 'Outros', kg: outrosKg });
+
+        const cores = ['#1a4972', '#2f7fb8', '#5aa9d6', '#9a6700', '#94a0b3'];
+        const raio = 52, cx = 70, cy = 70, circunferencia = 2 * Math.PI * raio;
+        let acumulado = 0;
+        let circulosHtml = '';
+        fatias.forEach((f, i) => {
+            const pct = f.kg / totalKg;
+            const comprimento = pct * circunferencia;
+            circulosHtml += `<circle cx="${cx}" cy="${cy}" r="${raio}" fill="none" stroke="${cores[i % cores.length]}" stroke-width="22" stroke-dasharray="${comprimento.toFixed(1)} ${(circunferencia - comprimento).toFixed(1)}" stroke-dashoffset="${(-acumulado).toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"><title>${f.nome}: ${(pct * 100).toFixed(1)}%</title></circle>`;
+            acumulado += comprimento;
+        });
+        const legendaHtml = fatias.map((f, i) => `
+            <span class="dash-legenda-item">
+                <span class="dash-legenda-cor" style="background:${cores[i % cores.length]}"></span>
+                ${f.nome} — ${((f.kg / totalKg) * 100).toFixed(1)}%
+            </span>
+        `).join('');
+        container.innerHTML = `
+            <div class="dash-participacao-wrap">
+                <svg viewBox="0 0 140 140" class="dash-donut-svg">${circulosHtml}</svg>
+                <div class="dash-legenda-list">${legendaHtml}</div>
+            </div>
+        `;
+    }
+
+    // ===== RELATÓRIOS RECENTES (acesso rápido, sem substituir o histórico) =====
+    function renderDashRelatoriosRecentes(lista) {
+        const container = document.getElementById('dashRelatoriosRecentes');
+        if (!container) return;
+        const recentes = lista.slice(0, 5);
+        if (!recentes.length) {
+            container.innerHTML = `
+                <div class="empty-state dash-empty">
+                    <span class="empty-icon"><i class="fas fa-file-alt"></i></span>
+                    <p>Nenhum relatório salvo ainda.</p>
+                    <p class="empty-sub">Gere relatórios na aba "Relatórios" para vê-los aqui.</p>
+                </div>
+            `;
+            return;
+        }
+        let html = '<div class="dash-relatorios-list">';
+        recentes.forEach(rel => {
+            html += `
+                <div class="dash-relatorio-item">
+                    <span class="dr-periodo"><i class="fas fa-calendar-week"></i> ${rel.periodoLabel}</span>
+                    <span class="dr-totais">
+                        <span>${rel.totalRegistros} reg.</span>
+                        <span>${formatPeso(rel.totalPesoKg)}</span>
+                        <strong>${formatMoeda(rel.totalValor)}</strong>
+                    </span>
+                    <span class="dr-actions">
+                        <button type="button" class="btn btn-sm btn-outline dr-ver" data-id="${rel.id}" title="Visualizar"><i class="fas fa-eye"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline dr-pdf" data-id="${rel.id}" title="PDF"><i class="fas fa-file-pdf"></i></button>
+                    </span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+
+        container.querySelectorAll('.dr-ver').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.id);
+                const rel = dashCacheRelatorios.find(r => r.id === id);
+                navegarPara('relatorios');
+                if (rel) exibirResumoSalvo(rel);
+            });
+        });
+        container.querySelectorAll('.dr-pdf').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.id);
+                const rel = dashCacheRelatorios.find(r => r.id === id);
+                if (rel) exportarPDFRelatorioSalvo(rel);
+            });
+        });
+    }
+
+    // ===== CARREGAR / RECALCULAR O DASHBOARD =====
+    async function carregarDashboard() {
+        try {
+            const todos = await obterTodosRegistros();
+
+            // Popular filtro de produtos a partir dos registros existentes (sem duplicar fonte de dados)
+            const selectProduto = document.getElementById('dashProdutoFiltro');
+            if (selectProduto) {
+                const selecionadoAtual = selectProduto.value;
+                const produtosUnicos = {};
+                todos.forEach(r => { produtosUnicos[r.codigo] = r.produto; });
+                const opcoes = Object.keys(produtosUnicos)
+                    .sort((a, b) => produtosUnicos[a].localeCompare(produtosUnicos[b]))
+                    .map(cod => `<option value="${cod}">${cod} — ${produtosUnicos[cod]}</option>`)
+                    .join('');
+                selectProduto.innerHTML = `<option value="">Todos os produtos</option>${opcoes}`;
+                if (selecionadoAtual && produtosUnicos[selecionadoAtual]) {
+                    selectProduto.value = selecionadoAtual;
+                }
+            }
+
+            const dataIniInput = document.getElementById('dashDataInicial');
+            const dataFimInput = document.getElementById('dashDataFinal');
+            if (dataIniInput && dataFimInput && (!dataIniInput.value || !dataFimInput.value)) {
+                const hoje = new Date();
+                const inicioPadrao = new Date(hoje);
+                inicioPadrao.setDate(inicioPadrao.getDate() - 6);
+                dataIniInput.value = inicioPadrao.toISOString().slice(0, 10);
+                dataFimInput.value = hoje.toISOString().slice(0, 10);
+            }
+
+            const dataIni = dataIniInput ? dataIniInput.value : '';
+            const dataFim = dataFimInput ? dataFimInput.value : '';
+            const produtoSel = selectProduto ? selectProduto.value : '';
+
+            const filtrados = filtrarRegistrosDashboard(todos, dataIni, dataFim, produtoSel);
+            const resumo = calcularResumoRelatorio(filtrados);
+            const porDia = agruparRegistrosPorDia(filtrados).map(dia => ({
+                chaveDia: dia.chaveDia,
+                periodoLabel: dia.periodoLabel,
+                resumo: calcularResumoRelatorio(dia.registros)
+            }));
+
+            dashCacheResumo = resumo;
+            dashCachePorDia = porDia;
+            dashCacheRelatorios = await obterRelatoriosSalvos();
+
+            renderDashKpis(resumo);
+            renderDashRanking(resumo.porProduto, dashSortRanking);
+            renderDashBarChart(resumo.porProduto, dashVerTodosBarras);
+            renderDashTendencia(porDia, dashMetricaTendencia);
+            renderDashPeriodos(porDia);
+            renderDashAtencao(calcularAlertasDashboard(resumo.porProduto, porDia));
+            renderDashParticipacao(resumo.porProduto);
+            renderDashRelatoriosRecentes(dashCacheRelatorios);
+        } catch (e) {
+            console.error('Erro ao carregar dashboard:', e);
+        }
+    }
+
+    // ===== EVENTOS DO DASHBOARD (registrados uma única vez) =====
+    function inicializarEventosDashboard() {
+        const btnAplicar = document.getElementById('btnDashAplicar');
+        const btnLimpar = document.getElementById('btnDashLimpar');
+        const selectProduto = document.getElementById('dashProdutoFiltro');
+        const btnVerTodosRelatorios = document.getElementById('btnDashVerTodosRelatorios');
+        const btnVerTodosBarras = document.getElementById('btnDashVerTodosBarras');
+
+        if (btnAplicar) btnAplicar.addEventListener('click', carregarDashboard);
+        if (btnLimpar) {
+            btnLimpar.addEventListener('click', () => {
+                document.getElementById('dashDataInicial').value = '';
+                document.getElementById('dashDataFinal').value = '';
+                if (selectProduto) selectProduto.value = '';
+                carregarDashboard();
+            });
+        }
+        if (selectProduto) selectProduto.addEventListener('change', carregarDashboard);
+        if (btnVerTodosRelatorios) btnVerTodosRelatorios.addEventListener('click', () => navegarPara('relatorios'));
+        if (btnVerTodosBarras) {
+            btnVerTodosBarras.addEventListener('click', () => {
+                dashVerTodosBarras = !dashVerTodosBarras;
+                if (dashCacheResumo) renderDashBarChart(dashCacheResumo.porProduto, dashVerTodosBarras);
+            });
+        }
+
+        document.querySelectorAll('#dashRankingToggle .dash-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#dashRankingToggle .dash-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                dashSortRanking = btn.dataset.sort;
+                if (dashCacheResumo) renderDashRanking(dashCacheResumo.porProduto, dashSortRanking);
+            });
+        });
+
+        document.querySelectorAll('#dashTendenciaToggle .dash-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#dashTendenciaToggle .dash-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                dashMetricaTendencia = btn.dataset.metrica;
+                if (dashCachePorDia) renderDashTendencia(dashCachePorDia, dashMetricaTendencia);
+            });
+        });
+    }
+
     // ===== NAVEGAÇÃO =====
     function navegarPara(pageId) {
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1297,6 +1870,9 @@
             document.getElementById('relDataInicial').value = inicio.toISOString().slice(0,10);
             document.getElementById('relDataFinal').value = hoje.toISOString().slice(0,10);
             renderHistoricoRelatorios();
+        }
+        if (pageId === 'dashboard') {
+            carregarDashboard();
         }
     }
 
@@ -1344,6 +1920,8 @@
 
             await carregarListaRegistros();
             await atualizarContador();
+            await carregarDashboard();
+            inicializarEventosDashboard();
 
             // Navegação
             document.querySelectorAll('.nav-btn').forEach(btn => {

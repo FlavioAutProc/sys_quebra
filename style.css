@@ -1320,3 +1320,381 @@ textarea { resize: vertical; min-height: 60px; }
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
+/* ======================================================================
+   DASHBOARD GERENCIAL DE QUEBRAS
+   Camada de leitura/análise — reutiliza os tokens de cor, espaçamento e
+   sombra já definidos em :root, sem introduzir uma nova linguagem visual.
+   ====================================================================== */
+
+.dash-filtros {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-xs);
+    padding: 16px 18px;
+    margin-bottom: 18px;
+}
+
+.dash-filtros-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.dash-filtros-row .form-group { margin-bottom: 0; }
+
+.dash-filtros-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ===== KPIs ===== */
+.dash-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.dash-kpi-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-xs);
+    padding: 16px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.dash-kpi-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+}
+
+.dash-kpi-blue .dash-kpi-icon { background: var(--primary-light); color: var(--primary); }
+.dash-kpi-green .dash-kpi-icon { background: var(--success-light); color: var(--success); }
+.dash-kpi-amber .dash-kpi-icon { background: var(--warning-light); color: var(--warning); }
+.dash-kpi-purple .dash-kpi-icon { background: #efe9fb; color: #6c3fc4; }
+
+.dash-kpi-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.dash-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    line-height: 1.15;
+}
+
+.dash-kpi-value-sm { font-size: 1.05rem; }
+
+.dash-kpi-sub {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+}
+
+/* ===== SEÇÕES ===== */
+.dash-section {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-xs);
+    padding: 16px 18px 18px;
+    margin-bottom: 16px;
+}
+
+.dash-section .section-heading { margin: 0 0 12px; }
+
+.dash-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.dash-grid-2 .dash-section { margin-bottom: 0; }
+
+.dash-empty { padding: 26px 16px; }
+
+/* ===== TOGGLE (alternar ordenação / métrica) ===== */
+.dash-toggle-group {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xs);
+    padding: 2px;
+    gap: 2px;
+}
+
+.dash-toggle {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.dash-toggle:hover { color: var(--primary); }
+.dash-toggle.active { background: var(--primary); color: #fff; }
+
+/* ===== RANKING DE PRODUTOS ===== */
+.dash-ranking-list { display: flex; flex-direction: column; gap: 4px; }
+
+.dash-ranking-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dash-ranking-item:last-child { border-bottom: none; }
+
+.dash-rank-pos {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    font-size: 0.72rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dash-ranking-item:nth-child(1) .dash-rank-pos { background: #fdeecb; color: #9a6700; }
+.dash-ranking-item:nth-child(2) .dash-rank-pos { background: #e7eaf0; color: #4b5768; }
+.dash-ranking-item:nth-child(3) .dash-rank-pos { background: #f3e2d2; color: #8a5a2b; }
+
+.dash-rank-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.dash-rank-nome {
+    font-size: 0.87rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dash-rank-meta { font-size: 0.72rem; color: var(--text-muted); }
+
+.dash-rank-pct {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* ===== GRÁFICO DE BARRAS (quebra por produto) ===== */
+.dash-bar-chart { display: flex; flex-direction: column; gap: 10px; }
+
+.dash-bar-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 90px;
+    align-items: center;
+    gap: 10px;
+}
+
+.dash-bar-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dash-bar-track {
+    background: var(--bg-primary);
+    border-radius: 6px;
+    height: 14px;
+    overflow: hidden;
+}
+
+.dash-bar-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #2f7fb8);
+    border-radius: 6px;
+    transition: width 0.3s ease;
+}
+
+.dash-bar-value {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+/* ===== TENDÊNCIA (SVG) ===== */
+.dash-trend-svg { width: 100%; height: auto; display: block; }
+
+/* ===== PERÍODOS COM MAIOR QUEBRA ===== */
+.dash-periodos-table { display: flex; flex-direction: column; }
+
+.dash-periodos-row {
+    display: grid;
+    grid-template-columns: 1.3fr 0.7fr 0.9fr 0.9fr 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.8rem;
+}
+
+.dash-periodos-row:last-child { border-bottom: none; }
+
+.dash-periodos-header {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+
+.dash-periodo-acoes { display: flex; gap: 4px; justify-content: flex-end; }
+.dash-periodo-acoes .btn { padding: 3px 7px; font-size: 0.72rem; }
+
+/* ===== ATENÇÃO (alertas) ===== */
+.dash-alertas-list { display: flex; flex-direction: column; gap: 8px; }
+
+.dash-alerta-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: var(--warning-light);
+    border: 1px solid #f3e0ab;
+    border-radius: var(--radius-xs);
+    padding: 10px 12px;
+}
+
+.dash-alerta-icon {
+    color: var(--warning);
+    font-size: 0.95rem;
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+
+.dash-alerta-body { display: flex; flex-direction: column; gap: 2px; }
+.dash-alerta-titulo { font-size: 0.83rem; font-weight: 700; color: var(--text-primary); }
+.dash-alerta-detalhe { font-size: 0.75rem; color: var(--text-secondary); }
+
+/* ===== PARTICIPAÇÃO (donut) ===== */
+.dash-participacao-wrap {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+
+.dash-donut-svg { width: 140px; height: 140px; flex-shrink: 0; }
+
+.dash-legenda-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dash-legenda-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.dash-legenda-cor {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* ===== RELATÓRIOS RECENTES ===== */
+.dash-relatorios-list { display: flex; flex-direction: column; }
+
+.dash-relatorio-item {
+    display: grid;
+    grid-template-columns: 1.2fr 1.4fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dash-relatorio-item:last-child { border-bottom: none; }
+
+.dr-periodo {
+    font-size: 0.83rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dr-periodo i { color: var(--primary); }
+
+.dr-totais {
+    display: flex;
+    gap: 12px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.dr-totais strong { color: var(--text-primary); }
+
+.dr-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.dr-actions .btn { padding: 3px 7px; font-size: 0.72rem; }
+
+/* ===== RESPONSIVO ===== */
+@media (max-width: 720px) {
+    .dash-filtros-row { grid-template-columns: 1fr; }
+    .dash-kpis { grid-template-columns: 1fr 1fr; }
+    .dash-grid-2 { grid-template-columns: 1fr; }
+    .dash-bar-row { grid-template-columns: 92px 1fr 74px; }
+    .dash-periodos-row { grid-template-columns: 1fr 0.5fr 0.8fr 0.8fr; }
+    .dash-periodos-header span:last-child,
+    .dash-periodos-row .dash-periodo-acoes { display: none; }
+    .dash-relatorio-item { grid-template-columns: 1fr; row-gap: 6px; }
+    .dr-actions { justify-content: flex-start; }
+}
+
+@media (max-width: 420px) {
+    .dash-kpis { grid-template-columns: 1fr; }
+}
